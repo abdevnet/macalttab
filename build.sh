@@ -18,8 +18,9 @@ xcrun swiftc -O \
 cp Info.plist "$BUNDLE/Contents/Info.plist"
 
 # A real signing identity keeps the signature stable across rebuilds so TCC
-# permissions stick; fall back to ad-hoc if none is available.
-IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/ {print $2; exit}')
+# permissions stick; fall back to ad-hoc if none is available. Override with
+# CODESIGN_IDENTITY (any identity, e.g. a self-signed code-signing cert).
+IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/ {print $2; exit}')}"
 codesign --force --sign "${IDENTITY:--}" "$BUNDLE"
 
 echo "Built $BUNDLE"

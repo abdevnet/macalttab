@@ -33,9 +33,21 @@ ditto build/MyAltTab.app /Applications/MyAltTab.app
 open /Applications/MyAltTab.app
 ```
 
-Plain `swiftc`, no Xcode project. Signs with an Apple Development identity when one is
-present (keeps TCC grants stable across rebuilds), ad-hoc otherwise. Requires macOS 14+;
-built and tested on macOS 26.
+Plain `swiftc`, no Xcode project. Building needs only the free Xcode Command Line Tools —
+no Apple Developer account.
+
+The script signs with an Apple Development identity when one is present and falls back to
+ad-hoc signing otherwise. Ad-hoc builds work fine, but every rebuild looks like a new app
+to macOS, so you may have to re-grant Accessibility and Screen Recording after rebuilding
+(toggle the entries off and on in System Settings). To avoid that without an Apple
+account, create a self-signed code-signing certificate (Keychain Access → Certificate
+Assistant → Create a Certificate, type "Code Signing") and build with:
+
+```sh
+CODESIGN_IDENTITY="My Code Signing Cert" ./build.sh
+```
+
+Requires macOS 14+; built and tested on macOS 26.
 
 ## Permissions
 
