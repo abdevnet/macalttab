@@ -1,0 +1,32 @@
+# XcodeGen spec — regenerate MyAltTab.xcodeproj with: xcodegen generate
+name: MyAltTab
+options:
+  bundleIdPrefix: com.andybarker
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  MyAltTab:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: MyAltTab
+        PRODUCT_BUNDLE_IDENTIFIER: com.andybarker.MyAltTab
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        # The SkyLight symbols aren't in any SDK tbd; they resolve at runtime
+        # since SkyLight is loaded into every GUI process.
+        OTHER_LDFLAGS: ["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"]
+        # Event taps and cross-app window control don't work in the sandbox.
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: 5RS5XWDH2P

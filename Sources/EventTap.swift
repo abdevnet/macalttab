@@ -1,6 +1,7 @@
 import AppKit
 
 private let keyCodeTab: Int64 = 48
+private let keyCodeQ: Int64 = 12
 private let keyCodeEscape: Int64 = 53
 private let keyCodeLeftArrow: Int64 = 123
 private let keyCodeRightArrow: Int64 = 124
@@ -71,12 +72,18 @@ final class EventTap {
                 case keyCodeRightArrow:
                     switcher.advance(by: 1)
                     return nil
+                case keyCodeQ where optionHeld:
+                    // Ignore key repeat so holding ⌥Q doesn't quit app after app.
+                    if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+                        switcher.quitSelectedApp()
+                    }
+                    return nil
                 default:
                     break
                 }
             }
         case .keyUp:
-            if switcher.isActive && keyCode == keyCodeTab {
+            if switcher.isActive && (keyCode == keyCodeTab || keyCode == keyCodeQ) {
                 return nil
             }
         case .flagsChanged:

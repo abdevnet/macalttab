@@ -14,6 +14,10 @@ final class SwitcherPanel: NSPanel {
     private let effectView = NSVisualEffectView()
     private let preview = PreviewWindow()
 
+    var onHover: ((CGWindowID) -> Void)?
+    var onClick: ((CGWindowID) -> Void)?
+    var onQuit: ((CGWindowID) -> Void)?
+
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false
@@ -35,10 +39,32 @@ final class SwitcherPanel: NSPanel {
     }
 
     func present(windows: [WindowInfo], selected: Int) {
-        self.windows = windows
         images = [:]
+        show(windows: windows, selected: selected)
+    }
+
+    // Re-lays out a changed window list, keeping captured thumbnails. The tile now
+    // under a still mouse shows its hover state without changing the selection.
+    func reload(windows: [WindowInfo], selected: Int) {
+        show(windows: windows, selected: selected)
+        let point = mouseLocationOutsideOfEventStream
+        for tile in tiles {
+            tile.setHovered(tile.frame.contains(point))
+        }
+    }
+
+    private func show(windows: [WindowInfo], selected: Int) {
+        self.windows = windows
         for tile in tiles { tile.removeFromSuperview() }
-        tiles = windows.map { TileView(window: $0) }
+        tiles = windows.map { window in
+            let tile = TileView(window: window)
+            let id = window.windowID
+            tile.onHover = { [weak self] in self?.onHover?(id) }
+            tile.onClick = { [weak self] in self?.onClick?(id) }
+            tile.onQuit = { [weak self] in self?.onQuit?(id) }
+            if let image = images[id] { tile.setThumbnail(image) }
+            return tile
+        }
         tilesByWindowID = [:]
         for tile in tiles {
             tilesByWindowID[tile.windowID] = tile
@@ -175,12 +201,46 @@ final class PreviewWindow: NSWindow {
     }
 }
 
+// Red quit badge shown over a hovered tile's app icon.
+final class CloseButton: NSView {
+    var onClick: (() -> Void)?
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.systemRed.setFill()
+        NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
+        let inset = bounds.width * 0.32
+        let cross = NSBezierPath()
+        cross.move(to: NSPoint(x: inset, y: inset))
+        cross.line(to: NSPoint(x: bounds.maxX - inset, y: bounds.maxY - inset))
+        cross.move(to: NSPoint(x: inset, y: bounds.maxY - inset))
+        cross.line(to: NSPoint(x: bounds.maxX - inset, y: inset))
+        cross.lineWidth = 1.6
+        cross.lineCapStyle = .round
+        NSColor.black.withAlphaComponent(0.6).setStroke()
+        cross.stroke()
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {}
+
+    // Single clicks only: after a quit the tiles reflow, so the second click of a
+    // double-click would land on another app's badge.
+    override func mouseUp(with event: NSEvent) {
+        guard event.clickCount == 1, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        onClick?()
+    }
+}
+
 final class TileView: NSView {
     let windowID: CGWindowID
+    var onHover: (() -> Void)?
+    var onClick: (() -> Void)?
+    var onQuit: (() -> Void)?
     private let iconView = NSImageView()
     private let titleField = NSTextField(labelWithString: "")
     private let thumbView = NSImageView()
     private let placeholderView = NSImageView()
+    private let closeButton = CloseButton()
     private var thumbArea: NSRect = .zero
 
     init(window: WindowInfo) {
@@ -210,9 +270,58 @@ final class TileView: NSView {
         addSubview(placeholderView)
         addSubview(iconView)
         addSubview(titleField)
+
+        closeButton.isHidden = true
+        closeButton.onClick = { [weak self] in self?.onQuit?() }
+        addSubview(closeButton)
     }
 
     required init?(coder: NSCoder) { fatalError("not supported") }
+
+    // Hover is driven by movement only, so a panel that opens under a resting
+    // cursor doesn't steal the keyboard selection.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(rect: .zero,
+                                       options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        setHovered(true)
+        onHover?()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        setHovered(true)
+        onHover?()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        setHovered(false)
+    }
+
+    // Labels and image views would otherwise swallow clicks.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        guard bounds.contains(local) else { return nil }
+        if !closeButton.isHidden, closeButton.frame.contains(local) { return closeButton }
+        return self
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseUp(with event: NSEvent) {
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        onClick?()
+    }
+
+    func setHovered(_ hovered: Bool) {
+        closeButton.isHidden = !hovered
+        iconView.isHidden = hovered
+    }
 
     func layoutContents() {
         let pad = tilePadding
@@ -220,6 +329,7 @@ final class TileView: NSView {
         let headerY = bounds.height - pad - headerHeight
         iconView.frame = NSRect(x: pad + 2, y: headerY + (headerHeight - iconSize) / 2,
                                 width: iconSize, height: iconSize)
+        closeButton.frame = iconView.frame.insetBy(dx: 2, dy: 2)
         let titleX = pad + 2 + iconSize + 7
         titleField.frame = NSRect(x: titleX, y: headerY + (headerHeight - 18) / 2,
                                   width: bounds.width - titleX - pad, height: 18)
